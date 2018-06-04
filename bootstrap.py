@@ -359,14 +359,19 @@ class Bootstrap(object):
         logger.info('Post Setup')
 
         # dpkg calls sync() after package extraction
-        # /etc/dpkg/dpkg.cfg.d/docker-apt-speedup forces dpkg not to call
+        # /etc/dpkg/dpkg.cfg.d/docker-dpkg-speedup forces dpkg not to call
         # sync()
-        # tweak is removed if dpkg dues not support unsafe io
+        # tweak is removed if dpkg does not support unsafe io
         with Path(self._target/'usr'/'bin'/'dpkg').open('rb') as fhandle:
             with mmap(fhandle.fileno(), 0, access=ACCESS_READ) as memmap:
-                if memmap.find(b'unsafe-io') == -1:
+                pos = memmap.find(b'unsafe-io')
+                if pos == -1:
+                    logger.debug('unsafe-io feature not found in dpkg, '
+                                 'removing tweak')
                     Path(self._target/'etc'/'dpkg'/'dpkg.cfg.d' /
-                         'docker-apt-speedup').unlink()
+                         'docker-dpkg-speedup').unlink()
+                else:
+                    logger.debug('found unsafe-io feature in dpkg')
 
         self._exec_aptget(['remove', '--purge', '--auto-remove', 'systemd'])
 
