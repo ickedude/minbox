@@ -416,6 +416,7 @@ class Bootstrap(object):
         # this file is one APT creates to make sure we don't "autoremove" our
         # currently in-use kernel, which doesn't really apply to
         # debootstraps/Docker images that don't even have kernels installed
+        logger.debug('removing apt 01autoremove-kernels')
         apt_kernel_path = Path(self._target/'etc'/'apt' /
                                'apt.conf.d'/'01autoremove-kernels')
         apt_kernel_path.unlink()
@@ -425,6 +426,7 @@ class Bootstrap(object):
         self._exec_aptget(['clean'])
 
         # this forces "apt-get update" in dependent images, which is also good
+        logger.debug('clear apt cache')
         unlink_chain = chain(
             (self._target/'var'/'cache'/'apt').glob('*.bin'),
             (self._target/'var'/'cache'/'apt'/'archives').glob('*.deb'),
@@ -432,9 +434,11 @@ class Bootstrap(object):
             (self._target/'var'/'lib'/'apt'/'lists').glob('**/*'))
         for cache_file in unlink_chain:
             if cache_file.is_file():
+                logger.debug('removing %s', os.fspath(cache_file))
                 cache_file.unlink()
 
         # Disable some init scripts that aren't relevant in Docker
+        logger.debug('disabling init scripts')
         init_scripts = ('bootlogs', 'checkfs.sh', 'checkroot.sh',
                         'checkroot-bootclean.sh', 'hostname.sh', 'hwclock.sh',
                         'motd', 'mountall.sh', 'mountall-bootclean.sh',
@@ -448,6 +452,7 @@ class Bootstrap(object):
             exec_chroot(self._target, tmp_cmd, output=self.output)
 
         # Let daemons start
+        logger.debug('renaming policy-rc.d to let daemons start')
         policy_path = self._target/'usr'/'sbin'/'policy-rc.d'
         policy_path.rename(policy_path.with_suffix('.d.disabled'))
 
@@ -462,6 +467,8 @@ class Bootstrap(object):
         logger = logging.getLogger(__name__)
         logger.info('Archiving bootstrap image')
 
+        logger.debug('adding %s to %s',
+                     os.fspath(self._target), os.fspath(dest))
         with tarfile.open(os.fspath(dest), 'w:gz') as tar:
             tar.add(os.fspath(self._target), '/')
 
