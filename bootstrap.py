@@ -241,7 +241,7 @@ def build_image(archive: Path,
     dockerfile_content = """
         FROM scratch
         ADD {} /
-        #ENTRYPOINT ["/sbin/root_pid.py"]
+        ENTRYPOINT ["/sbin/root_pid.py"]
         CMD ["/bin/bash"]
         """.format(archive.name)
     stdout: Optional[int] = subprocess.DEVNULL
@@ -276,6 +276,8 @@ def build_image(archive: Path,
 class Bootstrap(object):
     """Create a bootstrap image, tune it for use with docker and archive it."""
 
+    default_packages:Sequence[str] = ('python3-minimal',)
+
     def __init__(self, suite: str, tmp_dir: Path,
                  output: bool = False) -> None:
         self._suite = suite
@@ -299,9 +301,10 @@ class Bootstrap(object):
         logger = logging.getLogger(__name__)
         cmd: List[str] = ['debootstrap', '--variant=minbase',
                           '--force-check-gpg']
-        if packages:
-            pkg_list = ','.join(packages)
-            cmd.append('--include='+pkg_list)
+        include = list(self.default_packages)
+        include.extend(packages)
+        if include:
+            cmd.append('--include='+','.join(include))
         cmd.append(self._suite)
         cmd.append(os.fspath(self._target))
         if mirror is not None:
