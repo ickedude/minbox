@@ -6,10 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+### Added
+- root_pid.py accepts graceful termination timeout argument
+
+### Changed
+- refactored root_pid.py to depend only on python3-minimal
+
 ### Fixed
 - aligned unsafe-io file name to corresponding resource file
-- refactored root_pid.py to depend only on python3-minimal
-- root_pid.py accepts graceful termination timeout argument
 
 ## [0.2.0] - 2018-06-04
 ### Added
