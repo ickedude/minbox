@@ -142,6 +142,10 @@ def parse_arguments() -> Namespace:
     parser.add_argument('arguments', metavar='ARG', type=str, nargs=REMAINDER,
                         help=('Argument list available to the executed '
                               'program.'))
+    parser.add_argument('-t', '--timeout', type=int, metavar='TIMEOUT',
+                        default=10,
+                        help=('Number of seconds to wait for the processes to '
+                              'stop before killing it (default=%(default)d).'))
     parser.add_argument('-v', '--verbose', action='store_const',
                         dest='loglevel', const=logging.Level.INFO,
                         default=logging.Level.WARNING,
@@ -219,10 +223,13 @@ def terminate_all(timeout: int = 0) -> None:
         os.kill(0, SIGTERM)
     except ProcessLookupError:
         logger.debug('all processes terminated')
+        wait_loop()
+        return
     except PermissionError as err:
         err_msg = str(err)
         logger.warning('error terminating one or more processes: %s', err_msg)
         logger.debug(err_msg)
+    logger.debug('waiting %d seconds for graceful termination', timeout)
     install_sighandler(sighandle_term_timeout, SIGALRM)
     alarm(timeout)
     wait_loop()
@@ -249,8 +256,7 @@ def main() -> None:
         logger.warning('Init system aborted.')
     finally:
         logger.info('Shutting down init system.')
-        # TODO: implement timeout argument
-        terminate_all(10)
+        terminate_all(argv.timeout)
 
 
 if __name__ == '__main__':
