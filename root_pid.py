@@ -53,7 +53,6 @@ class logging(object):
     """
     dt_format = '%Y-%m-%dT%H:%M:%S%z'
     msg_format = '{datetime} [{level: <8}] {message}'
-    converter = time.gmtime
 
     class Level(IntEnum):
         """Enumeration of log levels."""
@@ -65,8 +64,14 @@ class logging(object):
 
     _logger = {}  # type: MutableMapping[Optional[str], logging]
 
-    def __init__(self, level: Level) -> None:
+    def __init__(self, level: Level, localtime: bool = True) -> None:
         self.level = level
+        if localtime is True:
+            self.converter = time.localtime
+            self.info('log messages in local time')
+        else:
+            self.converter = time.gmtime
+            self.info('log messages in UTC time')
 
     def _print(self, level, msg, *args):
         # type: (Level, str, Any) -> None
@@ -116,14 +121,14 @@ class logging(object):
         traceback.print_stack()
 
     @classmethod
-    def getLogger(cls, name=None, level=Level.WARNING):
-        # type: (Optional[str], Level) -> logging
+    def getLogger(cls, name=None, level=Level.WARNING, localtime=True):
+        # type: (Optional[str], Level, bool) -> logging
         """Return a logging instance by name. Create a new if name is
         unknown.
         """
         logger = cls._logger.get(name, None)
         if logger is None:
-            logger = cls(level)
+            logger = cls(level, localtime)
             cls._logger[name] = logger
         return logger
 
@@ -146,13 +151,16 @@ def parse_arguments() -> Namespace:
                         default=10,
                         help=('Number of seconds to wait for the processes to '
                               'stop before killing it (default=%(default)d).'))
+    parser.add_argument('--utc', action='store_false', dest='log_localtime',
+                        help=('Output logging statements in UTC instead of '
+                              'local time.'))
     parser.add_argument('-v', '--verbose', action='store_const',
-                        dest='loglevel', const=logging.Level.INFO,
+                        dest='log_level', const=logging.Level.INFO,
                         default=logging.Level.WARNING,
                         help=('Verbose mode. Causes %(prog)s to print '
                               'messages about its progress.'))
     parser.add_argument('-d', '--debug', action='store_const',
-                        dest='loglevel', const=logging.Level.DEBUG,
+                        dest='log_level', const=logging.Level.DEBUG,
                         help=('Developer mode. Causes %(prog)s to print '
                               'debugging messages about its progress.'))
     parsed_args = parser.parse_args()
@@ -240,7 +248,7 @@ def main() -> None:
     waits for termination.
     """
     argv = parse_arguments()
-    logger = logging.getLogger(__name__, argv.loglevel)
+    logger = logging.getLogger(__name__, argv.log_level, argv.log_localtime)
 
     # install signal handler
     signal(SIGINT, sighandle_termination)
@@ -260,5 +268,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    # TODO: implement UTC/local switch for logging
     main()

@@ -49,6 +49,11 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
+        'local': {
+            'format': '{asctime} [{levelname: <8}] {message}',
+            'datefmt': '%Y-%m-%dT%H:%M:%S%z',
+            'style': '{',
+        },
         'utc': {
             '()': UTCFormatter,
             'format': '{asctime} [{levelname: <8}] {message}',
@@ -59,7 +64,7 @@ LOGGING = {
     'handlers': {
         'stderr': {
             'class': 'logging.StreamHandler',
-            'formatter': 'utc',
+            'formatter': 'local',
         },
     },
     'loggers': {
@@ -72,12 +77,22 @@ LOGGING = {
 TMP_PREFIX = 'mininit-'
 
 
-def setup_logging(loglevel: int = logging.WARNING) -> None:
+def setup_logging(level: int = logging.WARNING,
+                  localtime: bool = True) -> None:
     """Loading logger configuration."""
-    loggers = LOGGING.get('loggers', dict())
-    root_logger = loggers.get('', dict())  # type: ignore
-    root_logger['level'] = loglevel
+    loggers = LOGGING.get('loggers', {})
+    root_logger = loggers.get('', {})  # type: ignore
+    root_logger['level'] = level
+    if localtime is False:
+        handlers = LOGGING.get('handlers', {})  # type: ignore
+        for handler_ref in root_logger.get('handlers', ()):
+            handler = handlers.get(handler_ref, {})
+            handler['formatter'] = 'utc'
     logging.config.dictConfig(LOGGING)
+
+    logger = logging.getLogger(__name__)
+    if localtime is False:
+        logger.info('log messages in UTC time')
 
 
 def parse_arguments() -> Namespace:
@@ -123,18 +138,21 @@ def parse_arguments() -> Namespace:
                               'success. Refer to docker-tag(1) for more '
                               'information about valid tag names.'))
     parser.add_argument('-v', '--verbose', action='count', default=0,
-                        dest='loglevel',
+                        dest='log_level',
                         help=('Verbose mode. Causes %(prog)s to print '
                               'messages about its progress. Multiple options '
                               'increases the verbosity. The maximum is 2.'))
+    parser.add_argument('--utc', action='store_false', dest='log_localtime',
+                        help=('Output logging statements in UTC instead of '
+                              'local time.'))
     parsed_args = parser.parse_args()
 
-    if parsed_args.loglevel == 0:
-        parsed_args.loglevel = logging.WARNING
-    elif parsed_args.loglevel == 1:
-        parsed_args.loglevel = logging.INFO
+    if parsed_args.log_level == 0:
+        parsed_args.log_level = logging.WARNING
+    elif parsed_args.log_level == 1:
+        parsed_args.log_level = logging.INFO
     else:
-        parsed_args.loglevel = logging.DEBUG
+        parsed_args.log_level = logging.DEBUG
 
     if parsed_args.tmpdir in ('.', './'):
         parsed_args.tmpdir = os.getcwd()
@@ -276,7 +294,7 @@ def build_image(archive: Path,
 class Bootstrap(object):
     """Create a bootstrap image, tune it for use with docker and archive it."""
 
-    default_packages:Sequence[str] = ('python3-minimal',)
+    default_packages: Sequence[str] = ('python3-minimal',)
 
     def __init__(self, suite: str, tmp_dir: Path,
                  output: bool = False) -> None:
@@ -510,7 +528,7 @@ def main() -> None:
     and deleted.
     """
     args = parse_arguments()
-    setup_logging(args.loglevel)
+    setup_logging(args.log_level, args.log_localtime)
     logger = logging.getLogger(__name__)
     logger.debug('parsed arguments: %s', args)
 
@@ -534,7 +552,7 @@ def main() -> None:
         logger.debug('no bootstrap archive found matching %s', args.archive)
         arch_op = ArchiveOperation.CREATE
 
-    output = args.loglevel < logging.INFO
+    output = args.log_level < logging.INFO
     bs_img: Path = args.archive
     if arch_op in (ArchiveOperation.CREATE,
                    ArchiveOperation.UPDATE):
