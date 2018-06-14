@@ -118,7 +118,7 @@ class logging(object):
         # type: (str, Any) -> None
         """Print fatal message and stack trace on stdout."""
         self._print(self.Level.FATAL, msg, *args)
-        traceback.print_stack()
+        traceback.print_exc()
 
     @classmethod
     def getLogger(cls, name=None, level=Level.WARNING, localtime=True):
@@ -202,9 +202,8 @@ def proc_exec(args):
     try:
         proc = Popen(args)
         return proc
-    except OSError:
-        # TODO: error handling
-        pass
+    except OSError as err:
+        logger.error('Error while executing "%s": %s', args[0], err)
     return None
 
 
@@ -237,7 +236,7 @@ def terminate_all(timeout: int = 0) -> None:
         err_msg = str(err)
         logger.warning('error terminating one or more processes: %s', err_msg)
         logger.debug(err_msg)
-    logger.debug('waiting %d seconds for graceful termination', timeout)
+    logger.debug('waiting max %d seconds for graceful termination', timeout)
     install_sighandler(sighandle_term_timeout, SIGALRM)
     alarm(timeout)
     wait_loop()
