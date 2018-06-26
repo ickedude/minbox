@@ -27,6 +27,7 @@ import os.path
 import subprocess
 import sys
 import tarfile
+import textwrap
 import time
 from argparse import ArgumentParser
 from argparse import Namespace
@@ -35,7 +36,7 @@ from enum import Enum
 from itertools import chain
 from mmap import mmap, ACCESS_READ
 from pathlib import Path
-from shutil import copy2, rmtree
+from shutil import copy, copy2, rmtree
 from tempfile import mkdtemp
 from typing import Iterable, List, Optional, Sequence
 
@@ -353,27 +354,163 @@ class Bootstrap(object):
                              err.returncode)
                 raise
 
+    def _presetup_initctl(self) -> None:
+        """Prevent upstart scripts from running during install/update and fix
+        some issues with APT packages.
+
+        https://github.com/saltstack/salt/issues/11118
+        If your application uses upstart, this wont fit well in bare docker
+        images, and even more if they divert /sbin/init or /sbin/initctl to
+        something like /bin/true or /dev/null. You application may use service
+        to start if this one has an old school systemV initscript and if the
+        initctl command has not been diverted.
+        In the case of salt-minion, on Ubuntu the packaging uses an upstart job
+        and no classical init script so it is normal that it wont start in both
+        cases.
+
+        https://github.com/docker/docker/issues/1024
+        Because Docker replaces the default /sbin/init with its own, there's no
+        way to run the Upstart init inside a Docker container.
+        """
+        cmds = (
+            ('dpkg-divert', '--local', '--rename', '/sbin/initctl'),
+            ('ln', '-sf', '/bin/true', '/sbin/initctl'),
+        )
+        for cmd in cmds:
+            exec_chroot(self._target, cmd, output=self.output)
+
+    def _presetup_ichroot(self) -> None:
+        """Replace the 'ischroot' tool to make it always return true.
+
+        Prevent initscripts updates from breaking /dev/shm.
+        https://journal.paul.querna.org/articles/2013/10/15/docker-ubuntu-on-rackspace/
+        https://bugs.launchpad.net/launchpad/+bug/974584
+        """
+        cmds = (
+            ('dpkg-divert', '--local', '--rename', '--add', '/usr/bin/ischroot'),
+            ('ln', '-sf', '/bin/true', '/usr/bin/ischroot'),
+        )
+        for cmd in cmds:
+            exec_chroot(self._target, cmd, output=self.output)
+
+    def _presetup_policyrcd(self) -> None:
+        """Prevent starting services by policy."""
+        content = """\
+        #!/bin/sh
+
+        # For most Docker users, "apt-get install" only happens during
+        # "docker build", where starting services doesn't work and often fails
+        # in humorous ways. This prevents those failures by stopping the
+        # services from attempting to start.
+
+        exit 101
+        """
+        with (self._target/'usr'/'sbin'/'policy-rc.d').open('wt') as fhandle:
+            fhandle.write(textwrap.dedent(content))
+
+    def _presetup_dpkg_unsafeio(self) -> None:
+        """Skip fsync on package installation.
+
+        dpkg calls sync() after package extraction, but when building an image
+        we don’t need to worry about individual fsyncs.
+        """
+        found = False
+        with (self._target/'usr'/'bin'/'dpkg').open('rb') as fhandle:
+            with mmap(fhandle.fileno(), 0, access=ACCESS_READ) as memmap:
+                pos = memmap.find(b'unsafe-io')
+                found = pos != -1
+        if found is True:
+            content = """\
+            # For most Docker users, package installs happen during
+            # "docker build", which doesn't survive power loss and gets
+            # restarted clean afterwards anyhow, so this minor tweak gives
+            # us a nice speedup (much nicer on spinning disks, obviously).
+            force-unsafe-io
+            """
+            path = self._target/'etc'/'dpkg'/'dpkg.cfg.d'/'docker-dpkg-speedup'
+            with path.open('wt') as fhandle:
+                fhandle.write(textwrap.dedent(content))
+
+    def _presetup_autoremove_suggests(self) -> None:
+        """Configure APT to be aggressive about removing the packages it
+        added.
+        """
+        content = """\
+        # Since Docker users are looking for the smallest possible final
+        # images, the following emerges as a very common pattern:
+        #   RUN apt-get update \
+        #       && apt-get install -y <packages> \
+        #       && <do some compilation work> \
+        #       && apt-get purge -y --auto-remove <packages>
+        # By default, APT will actually _keep_ packages installed via
+        # Recommends or Depends if another package Suggests them, even and
+        # including if the package that originally caused them to be installed
+        # is removed.  Setting this to "false" ensures that APT is
+        # appropriately aggressive about removing the packages it added.
+        # https://aptitude.alioth.debian.org/doc/en/ch02s05s05.html#configApt-AutoRemove-SuggestsImportant
+        Apt::AutoRemove::SuggestsImportant "false";
+        """
+        path = \
+            self._target/'etc'/'apt'/'apt.conf.d'/'docker-autoremove-suggests'
+        with path.open('wt') as fhandle:
+            fhandle.write(textwrap.dedent(content))
+
+    def _presetup_no_languages(self) -> None:
+        """Do not download translation files."""
+        content = """\
+        # In Docker, we don't often need the "Translations" files, so we're
+        # just wasting time and space by downloading them, and this inhibits
+        # that.  For users that do need them, it's a simple matter to delete
+        # this file and "apt-get update". :)
+        Acquire::Languages "none";
+        """
+        path = self._target/'etc'/'apt'/'apt.conf.d'/'docker-no-languages'
+        with path.open('wt') as fhandle:
+            fhandle.write(textwrap.dedent(content))
+
+    def _presetup_gzip_indexes(self) -> None:
+        """Request zipped version of indexes."""
+        content = """\
+        # Since Docker users using
+        # "RUN apt-get update && apt-get install -y ..." in their Dockerfiles
+        # don't go delete the lists files afterwards, we want them to be as
+        # small as possible on-disk, so we explicitly request "gz" versions and
+        # tell Apt to keep them gzipped on-disk. For comparison, an
+        # "apt-get update" layer without this on a pristine "debian:wheezy"
+        # base image was "29.88 MB", where with this it was only "8.273 MB".
+        Acquire::GzipIndexes "true";
+        Acquire::CompressionTypes::Order:: "gz";
+        """
+        path = self._target/'etc'/'apt'/'apt.conf.d'/'docker-gzip-indexes'
+        with path.open('wt') as fhandle:
+            fhandle.write(textwrap.dedent(content))
+
     def presetup(self) -> None:
         """Pre setup steps before copying resources and running upgrade."""
         logger = logging.getLogger(__name__)
         logger.info('Pre Setup')
 
-        commands = [
-            # rename /sbin/init so we can use telinit to restart the thing.
-            ['dpkg-divert', '--local', '--rename', '/sbin/init'],
-            # prevent upstart scripts from running during install/update
-            ['dpkg-divert', '--local', '--rename', '/sbin/initctl'],
+        self._presetup_initctl()
+        self._presetup_ichroot()
+        self._presetup_policyrcd()
+        self._presetup_dpkg_unsafeio()
+        self._presetup_autoremove_suggests()
+        self._presetup_no_languages()
+        self._presetup_gzip_indexes()
 
-            # TODO:
-            #  ['dpkg-divert', '--local', '--divert', '/etc/syslog.conf.internal',
-            #  '--rename', '/etc/syslog.conf'],
-            #  ['dpkg-divert', '--local', '--divert', '/sbin/sulogin.real',
-            #  '--rename', '/sbin/sulogin'],
-            #  ['dpkg-divert', '--local', '--rename', '--add', '/usr/bin/ischroot'],
-            #  ['ln', '-sf', '/bin/true', '/usr/bin/ischroot'],
-        ]
-        for cmd in commands:
-            exec_chroot(self._target, cmd, output=self.output)
+        # TODO:
+        #  commands = [
+        #      # rename /sbin/init so we can use telinit to restart the thing.
+        #      ['dpkg-divert', '--local', '--rename', '/sbin/init'],
+        #
+        #      ['dpkg-divert', '--local', '--divert', '/etc/syslog.conf.internal',
+        #      '--rename', '/etc/syslog.conf'],
+        #
+        #      ['dpkg-divert', '--local', '--divert', '/sbin/sulogin.real',
+        #      '--rename', '/sbin/sulogin'],
+        #  ]
+        #  for cmd in commands:
+        #      exec_chroot(self._target, cmd, output=self.output)
 
     def copy_resources(self, sources: Iterable[Path]) -> None:
         """Recursively copy given resources to target preserving mode and time, but
@@ -387,27 +524,30 @@ class Bootstrap(object):
             for path in result:
                 logger.debug('copied %s', path)
 
+    def _postsetup_rootpid(self) -> None:
+        """Install root_pid.py into bootstrap image."""
+        src = Path('root_pid.py')
+        dst = self._target/'sbin'
+        copy(os.fspath(src), os.fspath(dst))
+
+    def _postsetup_autoremove_kernels(self) -> None:
+        """Allow apt to autoremove kernels."""
+        # this file is one APT creates to make sure we don't "autoremove" our
+        # currently in-use kernel, which doesn't really apply to
+        # debootstraps/Docker images that don't even have kernels installed
+        path = self._target/'etc'/'apt'/'apt.conf.d'/'01autoremove-kernels'
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
     def postsetup(self) -> None:
-        """Post setup steps after copying resources, but before upgrade."""
+        """Post setup steps after copying resources and upgrade."""
         logger = logging.getLogger(__name__)
         logger.info('Post Setup')
-
-        # dpkg calls sync() after package extraction
-        # /etc/dpkg/dpkg.cfg.d/docker-dpkg-speedup forces dpkg not to call
-        # sync()
-        # tweak is removed if dpkg does not support unsafe io
-        with Path(self._target/'usr'/'bin'/'dpkg').open('rb') as fhandle:
-            with mmap(fhandle.fileno(), 0, access=ACCESS_READ) as memmap:
-                pos = memmap.find(b'unsafe-io')
-                if pos == -1:
-                    logger.debug('unsafe-io feature not found in dpkg, '
-                                 'removing tweak')
-                    Path(self._target/'etc'/'dpkg'/'dpkg.cfg.d' /
-                         'docker-dpkg-speedup').unlink()
-                else:
-                    logger.debug('found unsafe-io feature in dpkg')
-
         self._exec_aptget(['remove', '--purge', '--auto-remove', 'systemd'])
+        self._postsetup_rootpid()
+        self._postsetup_autoremove_kernels()
 
     def upgrade(self) -> None:
         """Running security and suite upgrade."""
@@ -446,14 +586,6 @@ class Bootstrap(object):
         """Cleanup image in favor of size."""
         logger = logging.getLogger(__name__)
         logger.info('Cleanup bootstrap image')
-
-        # this file is one APT creates to make sure we don't "autoremove" our
-        # currently in-use kernel, which doesn't really apply to
-        # debootstraps/Docker images that don't even have kernels installed
-        logger.debug('removing apt 01autoremove-kernels')
-        apt_kernel_path = Path(self._target/'etc'/'apt' /
-                               'apt.conf.d'/'01autoremove-kernels')
-        apt_kernel_path.unlink()
 
         self._exec_aptget(['autoremove', '--purge'])
         self._exec_aptget(['autoclean'])
@@ -515,9 +647,9 @@ class Bootstrap(object):
             bs_img.init(mirror, packages)
             bs_img.presetup()
             bs_img.copy_resources(resources)
-            bs_img.postsetup()
             if security_update is True:
                 bs_img.upgrade()
+            bs_img.postsetup()
             bs_img.cleanup()
             bs_img.archive(dest)
 
