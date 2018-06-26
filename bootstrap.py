@@ -206,6 +206,7 @@ def exec_chroot(root: Path,
             env = {
                 'DEBIAN_FRONTEND': 'noninteractive',
                 'INITRD': 'no',
+                'LANG': 'C.UTF-8',
                 'LC_ALL': 'C.UTF-8',
                 'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
             }
@@ -264,6 +265,12 @@ def build_image(archive: Path,
     dockerfile_content = """
         FROM scratch
         ADD {} /
+        # allow automated installation of new packages
+        ENV DEBIAN_FRONTEND=noninteractive
+        # skip initramfs post-install hooks
+        ENV INITRD=no
+        # fix locale
+        ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
         ENTRYPOINT ["/sbin/root_pid.py"]
         CMD ["/bin/bash"]
         """.format(archive.name)
