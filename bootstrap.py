@@ -201,6 +201,7 @@ def exec_chroot(root: Path,
         if output is True:
             stdout = None
         logger.debug('running %s in %s', ' '.join(cmd), root)
+        returncode = -1
         try:
             os.chroot(root)
             env = {

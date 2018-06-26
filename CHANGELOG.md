@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - aligned unsafe-io file name to corresponding resource file
 - logging OS errors on executing command
 - set environment variables in docker image equivalent to chroot
+- fixed uninitialized var in exec_chroot for unhandled errors
 
 ## [0.2.0] - 2018-06-04
 ### Added
