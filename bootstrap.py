@@ -331,7 +331,7 @@ class Bootstrap(object):
         """Running debootstrap."""
         logger = logging.getLogger(__name__)
         cmd: List[str] = ['debootstrap', '--variant=minbase',
-                          '--force-check-gpg']
+                          '--force-check-gpg', '--merged-usr']
         include = list(self.default_packages)
         include.extend(packages)
         if include:
