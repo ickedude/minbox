@@ -131,6 +131,11 @@ def parse_arguments() -> Namespace:
                               'ssh://USER@HOST/PATH URLs are retrieved using '
                               'scp; use of ssh-agent or similar is strongly '
                               'recommended.'))
+    parser.add_argument('--no-security-update', dest='security_update',
+                        action='store_false',
+                        help=('Do not update image with current available '
+                              'security updates. This option is useful if you '
+                              'want to create the image offline.'))
     parser.add_argument('-t', '--tag', action='append', default=[],
                         dest='tags', metavar='TAG',
                         help=('Repository names (and optionally with tags) to '
@@ -495,14 +500,16 @@ class Bootstrap(object):
 
     def create(self, dest: Path, resources: Iterable[Path] = (),
                packages: Iterable[Path] = (),
-               mirror: Optional[str] = None) -> None:
+               mirror: Optional[str] = None,
+               security_update: bool = True) -> None:
         """Does the whole bootstrapping in one call."""
         with self as bs_img:
             bs_img.init(mirror, packages)
             bs_img.presetup()
             bs_img.copy_resources(resources)
             bs_img.postsetup()
-            bs_img.upgrade()
+            if security_update is True:
+                bs_img.upgrade()
             bs_img.cleanup()
             bs_img.archive(dest)
 
@@ -557,7 +564,8 @@ def main() -> None:
     if arch_op in (ArchiveOperation.CREATE,
                    ArchiveOperation.UPDATE):
         rootfs = Bootstrap(args.suite, args.tmpdir, output)
-        rootfs.create(args.archive, args.copy_dir, args.packages, args.mirror)
+        rootfs.create(args.archive, args.copy_dir, args.packages, args.mirror,
+                      args.security_update)
     build_image(bs_img, args.tmpdir, args.tags, output=output)
 
 

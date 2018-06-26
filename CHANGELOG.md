@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - root_pid.py accepts graceful termination timeout argument
 - added option --utc to log messages with UTC timestamp instead of local time
+- added option --no-security-update for offline creation of images
 
 ### Changed
 - refactored root_pid.py to depend only on python3-minimal
