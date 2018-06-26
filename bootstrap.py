@@ -554,7 +554,7 @@ def main() -> None:
     arch_op: Optional[ArchiveOperation] = None
     if is_tarfile(args.archive):
         logger.debug('archive %s already exists', args.archive)
-        if args.packages:
+        if args.packages or args.suite:
             logger.debug('recreating archive with packages %s',
                          sorted(args.packages))
             arch_op = ArchiveOperation.UPDATE

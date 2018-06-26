@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - refactored root_pid.py to depend only on python3-minimal
 - creating /{bin,sbin,lib}/ symlinks pointing to their counterparts in /usr/
+- rebuild image if --suite option is given
 
 ### Fixed
 - aligned unsafe-io file name to corresponding resource file
