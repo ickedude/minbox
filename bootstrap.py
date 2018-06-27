@@ -38,7 +38,7 @@ from mmap import mmap, ACCESS_READ
 from pathlib import Path
 from shutil import copy, copy2, rmtree
 from tempfile import mkdtemp
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, Iterator, List, Optional, Sequence
 
 
 class UTCFormatter(logging.Formatter):
@@ -110,7 +110,7 @@ def parse_arguments() -> Namespace:
                         metavar='DIR',
                         help=('Create temporary files in %(metavar)s '
                               '(default: %(default)s).'))
-    parser.add_argument('-s', '--suite', type=str.lower,  metavar='SUITE',
+    parser.add_argument('-s', '--suite', type=str.lower, metavar='SUITE',
                         help=('The %(metavar)s may be a release code name '
                               '(eg, sid, stretch, jessie) or a symbolic name '
                               '(eg, unstable, testing, stable, oldstable) '
@@ -142,6 +142,10 @@ def parse_arguments() -> Namespace:
                               'be applied to the resulting image in case of '
                               'success. Refer to docker-tag(1) for more '
                               'information about valid tag names.'))
+    parser.add_argument('-r', '--reduce-size', action='store_true',
+                        help=('Reducing the size of the image by removing '
+                              'unnecessary files, like man pages, docs, '
+                              'translations and so on.'))
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         dest='log_level',
                         help=('Verbose mode. Causes %(prog)s to print '
@@ -310,11 +314,12 @@ class Bootstrap(object):
     default_packages: Sequence[str] = ('python3-minimal',)
 
     def __init__(self, suite: str, tmp_dir: Path,
-                 output: bool = False) -> None:
+                 output: bool = False, reduce_size: bool = False) -> None:
         self._suite = suite
         self.tmp_dir = tmp_dir
         self._target: Path
         self.output = output
+        self.reduce_size = reduce_size
 
     def __enter__(self):
         logger = logging.getLogger(__name__)
@@ -484,6 +489,26 @@ class Bootstrap(object):
         with path.open('wt') as fhandle:
             fhandle.write(textwrap.dedent(content))
 
+    def _presetup_dpkg_path_exclude(self) -> None:
+        """Reducing the size of the image by excluding unnecessary files, like
+        man pages, docs, translations and so on.
+        """
+        content = """\
+        path-exclude */__pycache__/*
+        path-exclude /usr/share/doc/*
+        # we need to keep copyright files for legal reasons
+        path-include /usr/share/doc/*/copyright
+        path-exclude /usr/share/groff/*
+        path-exclude /usr/share/info/*
+        path-exclude /usr/share/lintian/*
+        path-exclude /usr/share/linda/*
+        path-exclude /usr/share/locale/*
+        path-exclude /usr/share/man/*
+        """
+        path = self._target/'etc'/'dpkg'/'dpkg.cfg.d'/'path_exclude'
+        with path.open('wt') as fhandle:
+            fhandle.write(textwrap.dedent(content))
+
     def presetup(self) -> None:
         """Pre setup steps before copying resources and running upgrade."""
         logger = logging.getLogger(__name__)
@@ -496,6 +521,8 @@ class Bootstrap(object):
         self._presetup_autoremove_suggests()
         self._presetup_no_languages()
         self._presetup_gzip_indexes()
+        if self.reduce_size is True:
+            self._presetup_dpkg_path_exclude()
 
         # TODO:
         #  commands = [
@@ -581,6 +608,28 @@ class Bootstrap(object):
                              src_sec_line, sources.relative_to(self._target))
                 source_fh.write(src_sec_line)
 
+    def _iter_uncritical_paths(self) -> Iterator[Path]:
+        target = self._target
+        yield from (target/'usr'/'lib').glob('python*/**/__pycache__/')
+        yield from (target/'usr'/'share').glob('python*/**/__pycache__/')
+        yield from (target/'var'/'cache'/'apt').glob('*.bin')
+        yield from (target/'var'/'cache'/'apt'/'archives').glob('**/*.deb')
+        yield from (target/'var'/'cache'/'debconf').glob('**/*')
+        yield target/'var'/'cache'/'man'
+        yield from (target/'var'/'lib'/'apt'/'lists').glob('**/*')
+
+    def _iter_aggressive_size_path(self) -> Iterator[Path]:
+        target = self._target
+        for path in (target/'usr'/'share'/'doc').glob('*/**/*'):
+            if not path.match('*/copyright'):
+                yield path
+        yield target/'usr'/'share'/'groff'
+        yield target/'usr'/'share'/'info'
+        yield target/'usr'/'share'/'linda'
+        yield target/'usr'/'share'/'lintian'
+        yield from (target/'usr'/'share'/'locale').glob('*/')
+        yield target/'usr'/'share'/'man'
+
     def cleanup(self) -> None:
         """Cleanup image in favor of size."""
         logger = logging.getLogger(__name__)
@@ -590,17 +639,23 @@ class Bootstrap(object):
         self._exec_aptget(['autoclean'])
         self._exec_aptget(['clean'])
 
-        # this forces "apt-get update" in dependent images, which is also good
         logger.debug('clear apt cache')
-        unlink_chain = chain(
-            (self._target/'var'/'cache'/'apt').glob('*.bin'),
-            (self._target/'var'/'cache'/'apt'/'archives').glob('*.deb'),
-            (self._target/'var'/'cache'/'apt'/'archives'/'partial').glob('*.deb*'),
-            (self._target/'var'/'lib'/'apt'/'lists').glob('**/*'))
-        for cache_file in unlink_chain:
-            if cache_file.is_file():
-                logger.debug('removing %s', os.fspath(cache_file))
-                cache_file.unlink()
+        paths = self._iter_uncritical_paths()
+        if self.reduce_size is True:
+            paths = chain(paths, self._iter_aggressive_size_path())
+        for path in paths:
+            logger.debug('removing %s', os.fspath(path))
+            if path.is_dir():
+                if path.is_symlink():
+                    link = path
+                    path = path.resolve()
+                    link.unlink()
+                rmtree(os.fspath(path))
+            else:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
         # Disable some init scripts that aren't relevant in Docker
         logger.debug('disabling init scripts')
@@ -685,7 +740,7 @@ def main() -> None:
     arch_op: Optional[ArchiveOperation] = None
     if is_tarfile(args.archive):
         logger.debug('archive %s already exists', args.archive)
-        if args.packages or args.suite is not None:
+        if args.packages or args.reduce_size or args.suite is not None:
             logger.debug('recreating archive with packages %s',
                          sorted(args.packages))
             arch_op = ArchiveOperation.UPDATE
@@ -702,7 +757,8 @@ def main() -> None:
     bs_img: Path = args.archive
     if arch_op in (ArchiveOperation.CREATE,
                    ArchiveOperation.UPDATE):
-        rootfs = Bootstrap(args.suite or 'stable', args.tmpdir, output)
+        rootfs = Bootstrap(args.suite or 'stable', args.tmpdir, output,
+                           args.reduce_size)
         rootfs.create(args.archive, args.copy_dir, args.packages, args.mirror,
                       args.security_update)
     build_image(bs_img, args.tmpdir, args.tags, output=output)
