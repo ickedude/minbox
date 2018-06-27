@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+
+## [0.3.0] - 2018-06-27
 ### Added
 - root_pid.py accepts graceful termination timeout argument
 - added option --utc to log messages with UTC timestamp instead of local time
