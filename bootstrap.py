@@ -110,12 +110,11 @@ def parse_arguments() -> Namespace:
                         metavar='DIR',
                         help=('Create temporary files in %(metavar)s '
                               '(default: %(default)s).'))
-    parser.add_argument('-s', '--suite', type=str.lower, default='stable',
-                        metavar='SUITE',
+    parser.add_argument('-s', '--suite', type=str.lower,  metavar='SUITE',
                         help=('The %(metavar)s may be a release code name '
                               '(eg, sid, stretch, jessie) or a symbolic name '
                               '(eg, unstable, testing, stable, oldstable) '
-                              '(default: %(default)s).'))
+                              '(default: stable).'))
     parser.add_argument('archive', nargs='?', default=Path('rootfs.tgz'),
                         type=Path, metavar='DEST',
                         help=('Name of the bootstrap archive to create '
@@ -686,7 +685,7 @@ def main() -> None:
     arch_op: Optional[ArchiveOperation] = None
     if is_tarfile(args.archive):
         logger.debug('archive %s already exists', args.archive)
-        if args.packages or args.suite:
+        if args.packages or args.suite is not None:
             logger.debug('recreating archive with packages %s',
                          sorted(args.packages))
             arch_op = ArchiveOperation.UPDATE
@@ -703,7 +702,7 @@ def main() -> None:
     bs_img: Path = args.archive
     if arch_op in (ArchiveOperation.CREATE,
                    ArchiveOperation.UPDATE):
-        rootfs = Bootstrap(args.suite, args.tmpdir, output)
+        rootfs = Bootstrap(args.suite or 'stable', args.tmpdir, output)
         rootfs.create(args.archive, args.copy_dir, args.packages, args.mirror,
                       args.security_update)
     build_image(bs_img, args.tmpdir, args.tags, output=output)
