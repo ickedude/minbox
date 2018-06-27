@@ -741,8 +741,7 @@ def main() -> None:
     if is_tarfile(args.archive):
         logger.debug('archive %s already exists', args.archive)
         if args.packages or args.reduce_size or args.suite is not None:
-            logger.debug('recreating archive with packages %s',
-                         sorted(args.packages))
+            logger.debug('recreating archive')
             arch_op = ArchiveOperation.UPDATE
         else:
             arch_op = ArchiveOperation.SELECT
