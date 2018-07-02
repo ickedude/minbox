@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+
+## [0.4.0] - 2018-07-02
 ### Changed
 - moved biggest part of bootstrap cleanup into new img_build.py script
 - prevent installation of suggested and recommended packages
