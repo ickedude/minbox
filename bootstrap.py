@@ -428,7 +428,7 @@ class Bootstrap(object):
         # Since Docker users are looking for the smallest possible final
         # images, the following emerges as a very common pattern:
         #   RUN apt-get update \
-        #       && apt-get install -y <packages> \
+        #       && apt-get install -y --no-install-recommends <packages> \
         #       && <do some compilation work> \
         #       && apt-get purge -y --auto-remove <packages>
         # By default, APT will actually _keep_ packages installed via
@@ -438,6 +438,8 @@ class Bootstrap(object):
         # appropriately aggressive about removing the packages it added.
         # https://aptitude.alioth.debian.org/doc/en/ch02s05s05.html#configApt-AutoRemove-SuggestsImportant
         Apt::AutoRemove::SuggestsImportant "false";
+        Apt::Install-Recommends="false";
+        Apt::Install-Suggests="false";
         """
         path = \
             self._target/'etc'/'apt'/'apt.conf.d'/'docker-autoremove-suggests'
