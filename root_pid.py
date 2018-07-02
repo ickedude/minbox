@@ -227,7 +227,7 @@ def terminate_all(timeout: int = 0) -> None:
     logger.debug('sending all processes SIGTERM')
     install_sighandler(SIG_IGN, SIGTERM)
     try:
-        os.kill(0, SIGTERM)
+        os.kill(-1, SIGTERM)
     except ProcessLookupError:
         logger.debug('all processes terminated')
         wait_loop()
