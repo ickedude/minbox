@@ -639,7 +639,7 @@ class Bootstrap(object):
 
     def _exec_aptget(self,
                      args: Sequence[str]) -> subprocess.CompletedProcess:
-        cmd = ['apt-get', '-y', '--no-install-recommends']
+        cmd = ['apt-get', '-y']
         cmd.extend(args)
         return exec_chroot(self._target, cmd, output=self.output)
 
