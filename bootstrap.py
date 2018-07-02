@@ -397,21 +397,6 @@ class Bootstrap(object):
         for cmd in cmds:
             exec_chroot(self._target, cmd, output=self.output)
 
-    def _presetup_policyrcd(self) -> None:
-        """Prevent starting services by policy."""
-        content = """\
-        #!/bin/sh
-
-        # For most Docker users, "apt-get install" only happens during
-        # "docker build", where starting services doesn't work and often fails
-        # in humorous ways. This prevents those failures by stopping the
-        # services from attempting to start.
-
-        exit 101
-        """
-        with (self._target/'usr'/'sbin'/'policy-rc.d').open('wt') as fhandle:
-            fhandle.write(textwrap.dedent(content))
-
     def _presetup_dpkg_unsafeio(self) -> None:
         """Skip fsync on package installation.
 
@@ -509,14 +494,27 @@ class Bootstrap(object):
         with path.open('wt') as fhandle:
             fhandle.write(textwrap.dedent(content))
 
+    def _presetup_imgbuild(self) -> None:
+        """Install img_build.py into bootstrap image."""
+        src = Path('img_build.py')
+        dst = self._target/'usr'/'local'/'bin'
+        copy(os.fspath(src), os.fspath(dst))
+
+    def _setup_policyrcd(self, action: str) -> None:
+        """Allow or forbid starting services by policy."""
+        cmd = ['/usr/local/bin/img_build.py', '--policyrcd']
+        cmd.append(action)
+        exec_chroot(self._target, cmd, output=self.output)
+
     def presetup(self) -> None:
         """Pre setup steps before copying resources and running upgrade."""
         logger = logging.getLogger(__name__)
         logger.info('Pre Setup')
 
+        self._presetup_imgbuild()
+        self._setup_policyrcd('forbid')
         self._presetup_initctl()
         self._presetup_ichroot()
-        self._presetup_policyrcd()
         self._presetup_dpkg_unsafeio()
         self._presetup_autoremove_suggests()
         self._presetup_no_languages()
@@ -608,54 +606,17 @@ class Bootstrap(object):
                              src_sec_line, sources.relative_to(self._target))
                 source_fh.write(src_sec_line)
 
-    def _iter_uncritical_paths(self) -> Iterator[Path]:
-        target = self._target
-        yield from (target/'usr'/'lib').glob('python*/**/__pycache__/')
-        yield from (target/'usr'/'share').glob('python*/**/__pycache__/')
-        yield from (target/'var'/'cache'/'apt').glob('*.bin')
-        yield from (target/'var'/'cache'/'apt'/'archives').glob('**/*.deb')
-        yield from (target/'var'/'cache'/'debconf').glob('**/*')
-        yield target/'var'/'cache'/'man'
-        yield from (target/'var'/'lib'/'apt'/'lists').glob('**/*')
-
-    def _iter_aggressive_size_path(self) -> Iterator[Path]:
-        target = self._target
-        for path in (target/'usr'/'share'/'doc').glob('*/**/*'):
-            if not path.match('*/copyright'):
-                yield path
-        yield target/'usr'/'share'/'groff'
-        yield target/'usr'/'share'/'info'
-        yield target/'usr'/'share'/'linda'
-        yield target/'usr'/'share'/'lintian'
-        yield from (target/'usr'/'share'/'locale').glob('*/')
-        yield target/'usr'/'share'/'man'
-
     def cleanup(self) -> None:
         """Cleanup image in favor of size."""
         logger = logging.getLogger(__name__)
         logger.info('Cleanup bootstrap image')
 
-        self._exec_aptget(['autoremove', '--purge'])
-        self._exec_aptget(['autoclean'])
-        self._exec_aptget(['clean'])
-
-        logger.debug('clear apt cache')
-        paths = self._iter_uncritical_paths()
+        cmd = ['/usr/local/bin/img_build.py', '--cleanup']
         if self.reduce_size is True:
-            paths = chain(paths, self._iter_aggressive_size_path())
-        for path in paths:
-            logger.debug('removing %s', os.fspath(path))
-            if path.is_dir():
-                if path.is_symlink():
-                    link = path
-                    path = path.resolve()
-                    link.unlink()
-                rmtree(os.fspath(path))
-            else:
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
+            cmd.append('--reduce-size')
+        if self.output is True:
+            cmd.append('--verbose')
+        exec_chroot(self._target, cmd, output=self.output)
 
         # Disable some init scripts that aren't relevant in Docker
         logger.debug('disabling init scripts')
@@ -672,9 +633,7 @@ class Bootstrap(object):
             exec_chroot(self._target, tmp_cmd, output=self.output)
 
         # Let daemons start
-        logger.debug('renaming policy-rc.d to let daemons start')
-        policy_path = self._target/'usr'/'sbin'/'policy-rc.d'
-        policy_path.rename(policy_path.with_suffix('.d.disabled'))
+        self._setup_policyrcd('allow')
 
     def _exec_aptget(self,
                      args: Sequence[str]) -> subprocess.CompletedProcess:
