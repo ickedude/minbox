@@ -95,7 +95,7 @@ def _cleanup_paths():
     yield from iglob('/var/cache/debconf/**/*', recursive=True)
     yield '/var/cache/man'
     yield from iglob('/var/lib/apt/lists/**/*', recursive=True)
-    yield from iglob('/var/log/*')
+    yield from filter(os.path.isfile, iglob('/var/log/**/*', recursive=True))
 
 
 def cleanup(verbose: bool = False) -> None:

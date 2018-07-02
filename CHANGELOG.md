@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - sending SIGTERM to all processes instead of just processes in process group
+- leaving sub directories under /var/log to prevent side effects like installation errors
 
 ## [0.3.0] - 2018-06-27
 ### Added
