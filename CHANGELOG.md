@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+### Added
+- support for python 3.5 by using comment style variable type annotations
 
 ## [0.4.0] - 2018-07-02
 ### Changed

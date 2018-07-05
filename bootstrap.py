@@ -201,7 +201,7 @@ def exec_chroot(root: Path,
         res.check_returncode()
         return res
     else:
-        stdout: Optional[int] = subprocess.DEVNULL
+        stdout = subprocess.DEVNULL  # type: Optional[int]
         if output is True:
             stdout = None
         logger.debug('running %s in %s', ' '.join(cmd), root)
@@ -230,11 +230,9 @@ def make_tempdir(prefix: Optional[str] = None,
                  tmp_dir: Optional[Path] = None) -> Path:
     """Creates a temporary directory. The path is resolved and returned."""
     logger = logging.getLogger(__name__)
-    tmp_path: Optional[str]
+    tmp_path = None  # type: Optional[str]
     if tmp_dir is not None:
         tmp_path = os.fspath(tmp_dir)
-    else:
-        tmp_path = None
     try:
         tmp_dirname = mkdtemp(prefix=prefix, dir=tmp_path)
     except OSError as err:
@@ -279,7 +277,7 @@ def build_image(archive: Path,
         ENTRYPOINT ["/sbin/root_pid.py"]
         CMD ["/bin/bash"]
         """.format(archive.name)
-    stdout: Optional[int] = subprocess.DEVNULL
+    stdout = subprocess.DEVNULL  # type: Optional[int]
     if output is True:
         stdout = None
     build_dir = make_tempdir(TMP_PREFIX+'build-', tmp_dir)
@@ -289,7 +287,7 @@ def build_image(archive: Path,
         dockerfile = Path(build_dir/'Dockerfile')
         with dockerfile.open('wt') as fhandle:
             fhandle.write(dockerfile_content)
-        cmd: List[str] = ['docker', 'build']
+        cmd = ['docker', 'build']  # type: List[str]
         for tag in tags:
             cmd.append('-t')
             cmd.append(tag)
@@ -310,14 +308,15 @@ def build_image(archive: Path,
 
 class Bootstrap(object):
     """Create a bootstrap image, tune it for use with docker and archive it."""
+    # TODO: prevent using without context manager, because of not setting self._target
 
-    default_packages: Sequence[str] = ('python3-minimal',)
+    default_packages = ('python3-minimal',)  # type: Sequence[str]
 
     def __init__(self, suite: str, tmp_dir: Path,
                  output: bool = False, reduce_size: bool = False) -> None:
         self._suite = suite
         self.tmp_dir = tmp_dir
-        self._target: Path
+        self._target = None  # type: Path
         self.output = output
         self.reduce_size = reduce_size
 
@@ -335,8 +334,8 @@ class Bootstrap(object):
              packages: Iterable[str] = ()) -> None:
         """Running debootstrap."""
         logger = logging.getLogger(__name__)
-        cmd: List[str] = ['debootstrap', '--variant=minbase',
-                          '--force-check-gpg', '--merged-usr']
+        cmd = ['debootstrap', '--variant=minbase', '--force-check-gpg',
+               '--merged-usr']  # type: List[str]
         include = list(self.default_packages)
         include.extend(packages)
         if include:
@@ -698,7 +697,7 @@ def main() -> None:
         logger.error('bootstrapping needs to be done as root')
         sys.exit(os.EX_NOPERM)
 
-    arch_op: Optional[ArchiveOperation] = None
+    arch_op = None  # type: Optional[ArchiveOperation]
     if is_tarfile(args.archive):
         logger.debug('archive %s already exists', args.archive)
         if args.packages or args.reduce_size or args.suite is not None:
@@ -714,7 +713,7 @@ def main() -> None:
         arch_op = ArchiveOperation.CREATE
 
     output = args.log_level < logging.INFO
-    bs_img: Path = args.archive
+    bs_img = args.archive  # type: Path
     if arch_op in (ArchiveOperation.CREATE,
                    ArchiveOperation.UPDATE):
         rootfs = Bootstrap(args.suite or 'stable', args.tmpdir, output,
