@@ -33,12 +33,11 @@ from argparse import ArgumentParser
 from argparse import Namespace
 from distutils.dir_util import copy_tree
 from enum import Enum
-from itertools import chain
 from mmap import mmap, ACCESS_READ
 from pathlib import Path
 from shutil import copy, copy2, rmtree
 from tempfile import mkdtemp
-from typing import Iterable, Iterator, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 
 class UTCFormatter(logging.Formatter):
@@ -207,7 +206,8 @@ def exec_chroot(root: Path,
         logger.debug('running %s in %s', ' '.join(cmd), root)
         returncode = -1
         try:
-            os.chroot(root)
+            os.chroot(str(root))
+            os.chdir(str(cwd))
             env = {
                 'DEBIAN_FRONTEND': 'noninteractive',
                 'INITRD': 'no',
@@ -215,8 +215,9 @@ def exec_chroot(root: Path,
                 'LC_ALL': 'C.UTF-8',
                 'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
             }
-            proc = subprocess.run(cmd, stdout=stdout, cwd=cwd, env=env,
-                                  check=True)
+            for key, val in env.items():
+                os.putenv(key, val)
+            proc = subprocess.run(cmd, stdout=stdout, check=True)
             returncode = proc.returncode
         except subprocess.CalledProcessError as err:
             returncode = err.returncode
@@ -232,7 +233,7 @@ def make_tempdir(prefix: Optional[str] = None,
     logger = logging.getLogger(__name__)
     tmp_path = None  # type: Optional[str]
     if tmp_dir is not None:
-        tmp_path = os.fspath(tmp_dir)
+        tmp_path = str(tmp_dir)
     try:
         tmp_dirname = mkdtemp(prefix=prefix, dir=tmp_path)
     except OSError as err:
@@ -241,7 +242,7 @@ def make_tempdir(prefix: Optional[str] = None,
         raise
 
     try:
-        temp = Path(tmp_dirname).resolve(True)
+        temp = Path(tmp_dirname).resolve()
     except (FileNotFoundError, RuntimeError) as err:
         logger.exception('Error resolving %s to an absolute path: %s',
                          tmp_dirname, str(err))
@@ -252,7 +253,7 @@ def make_tempdir(prefix: Optional[str] = None,
 def delete_tempdir(tmp_dir: Path) -> None:
     """Recursively delete given directory."""
     logger = logging.getLogger(__name__)
-    path = os.fspath(tmp_dir)
+    path = str(tmp_dir)
     logger.debug('deleting temporary directory %s', path)
     rmtree(path)
 
@@ -264,7 +265,6 @@ def build_image(archive: Path,
     """Build docker image from bootstrap image."""
     logger = logging.getLogger(__name__)
 
-    archive = Path(archive)
     dockerfile_content = """
         FROM scratch
         ADD {} /
@@ -283,7 +283,7 @@ def build_image(archive: Path,
     build_dir = make_tempdir(TMP_PREFIX+'build-', tmp_dir)
     try:
         logger.debug('create context in %s', build_dir)
-        copy2(os.fspath(archive), os.fspath(build_dir))
+        copy2(str(archive), str(build_dir))
         dockerfile = Path(build_dir/'Dockerfile')
         with dockerfile.open('wt') as fhandle:
             fhandle.write(dockerfile_content)
@@ -291,7 +291,7 @@ def build_image(archive: Path,
         for tag in tags:
             cmd.append('-t')
             cmd.append(tag)
-        cmd.append(os.fspath(build_dir))
+        cmd.append(str(build_dir))
         logger.info('Running docker build')
         logger.debug('running %s', ' '.join(cmd))
         try:
@@ -333,6 +333,7 @@ class Bootstrap(object):
              mirror: Optional[str] = None,
              packages: Iterable[str] = ()) -> None:
         """Running debootstrap."""
+        # TODO: add pre check if debootstrap is installed
         logger = logging.getLogger(__name__)
         cmd = ['debootstrap', '--variant=minbase', '--force-check-gpg',
                '--merged-usr']  # type: List[str]
@@ -341,7 +342,7 @@ class Bootstrap(object):
         if include:
             cmd.append('--include='+','.join(include))
         cmd.append(self._suite)
-        cmd.append(os.fspath(self._target))
+        cmd.append(str(self._target))
         if mirror is not None:
             cmd.append(mirror)
         stdout = None if self.output is True else subprocess.DEVNULL
@@ -499,7 +500,7 @@ class Bootstrap(object):
         """Install img_build.py into bootstrap image."""
         src = Path('img_build.py')
         dst = self._target/'usr'/'local'/'bin'
-        copy(os.fspath(src), os.fspath(dst))
+        copy(str(src), str(dst))
 
     def _setup_policyrcd(self, action: str) -> None:
         """Allow or forbid starting services by policy."""
@@ -543,9 +544,9 @@ class Bootstrap(object):
         """
         logger = logging.getLogger(__name__)
         logger.info('Copying resources')
-        dest = os.fspath(self._target)
+        dest = str(self._target)
         for source in sources:
-            result = copy_tree(os.fspath(source), dest)
+            result = copy_tree(str(source), dest)
             for path in result:
                 logger.debug('copied %s', path)
 
@@ -553,7 +554,7 @@ class Bootstrap(object):
         """Install root_pid.py into bootstrap image."""
         src = Path('root_pid.py')
         dst = self._target/'sbin'
-        copy(os.fspath(src), os.fspath(dst))
+        copy(str(src), str(dst))
 
     def _postsetup_autoremove_kernels(self) -> None:
         """Allow apt to autoremove kernels."""
@@ -648,9 +649,9 @@ class Bootstrap(object):
         logger.info('Archiving bootstrap image')
 
         logger.debug('adding %s to %s',
-                     os.fspath(self._target), os.fspath(dest))
-        with tarfile.open(os.fspath(dest), 'w:gz') as tar:
-            tar.add(os.fspath(self._target), '/')
+                     str(self._target), str(dest))
+        with tarfile.open(str(dest), 'w:gz') as tar:
+            tar.add(str(self._target), '/')
 
     def create(self, dest: Path, resources: Iterable[Path] = (),
                packages: Iterable[Path] = (),
@@ -678,7 +679,7 @@ class ArchiveOperation(Enum):
 def is_tarfile(path: Path) -> bool:
     """Check if given path is readable and a valid tar archive."""
     try:
-        return tarfile.is_tarfile(os.fspath(path))
+        return tarfile.is_tarfile(str(path))
     except FileNotFoundError:
         return False
 
