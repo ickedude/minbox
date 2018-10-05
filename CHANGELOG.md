@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - supporting debian stable and therefor python 3.5
 
+### Fixed
+- --reduce-size is not following symlinks anymore
+
 ## [0.4.0] - 2018-07-02
 ### Changed
 - moved biggest part of bootstrap cleanup into new img_build.py script

@@ -57,28 +57,28 @@ def _exec_aptget(args, output=False):
     proc = subprocess.run(cmd, stdout, check=True)
     return proc
 
-
 def _remove_path(path: str) -> None:
     """Implemented rmtree, because shutil is not available in
     python3-minimal.
     """
     if os.path.isdir(path):
         if os.path.islink(path):
-            link = path
-            path = os.path.realpath(path)
-            os.unlink(link)
-        for _, dirs, files, rootfd in os.fwalk(path, topdown=False):
-            for name in files:
-                try:
-                    os.unlink(name, dir_fd=rootfd)
-                except FileNotFoundError:
-                    pass
-            for name in dirs:
-                try:
-                    os.rmdir(name, dir_fd=rootfd)
-                except FileNotFoundError:
-                    pass
-        os.rmdir(path)
+            os.unlink(path)
+        else:
+            for _, dirs, files, rootfd in os.fwalk(path, topdown=False):
+                for name in files:
+                    try:
+                        os.unlink(name, dir_fd=rootfd)
+                    except FileNotFoundError:
+                        pass
+                for name in dirs:
+                    try:
+                        os.rmdir(name, dir_fd=rootfd)
+                    except NotADirectoryError:
+                        os.unlink(name, dir_fd=rootfd)
+                    except FileNotFoundError:
+                        pass
+            os.rmdir(path)
     else:
         try:
             os.unlink(path)
