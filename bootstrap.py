@@ -438,8 +438,8 @@ class Bootstrap(object):
         # appropriately aggressive about removing the packages it added.
         # https://aptitude.alioth.debian.org/doc/en/ch02s05s05.html#configApt-AutoRemove-SuggestsImportant
         Apt::AutoRemove::SuggestsImportant "false";
-        Apt::Install-Recommends="false";
-        Apt::Install-Suggests="false";
+        Apt::Install-Recommends "false";
+        Apt::Install-Suggests "false";
         """
         path = \
             self._target/'etc'/'apt'/'apt.conf.d'/'docker-autoremove-suggests'

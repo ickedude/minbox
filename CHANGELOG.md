@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - --reduce-size is not following symlinks anymore
+- fixed syntax error in apt config file; honoring to not install recommended packages now
 
 ## [0.4.0] - 2018-07-02
 ### Changed
