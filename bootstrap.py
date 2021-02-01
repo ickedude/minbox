@@ -274,7 +274,7 @@ def build_image(archive: Path,
         ENV INITRD=no
         # fix locale
         ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-        ENTRYPOINT ["/sbin/root_pid.py"]
+        ENTRYPOINT ["/usr/bin/tini"]
         CMD ["/bin/bash"]
         """.format(archive.name)
     stdout = subprocess.DEVNULL  # type: Optional[int]
@@ -310,7 +310,7 @@ class Bootstrap(object):
     """Create a bootstrap image, tune it for use with docker and archive it."""
     # TODO: prevent using without context manager, because of not setting self._target
 
-    default_packages = ('python3-minimal',)  # type: Sequence[str]
+    default_packages = ('python3-minimal', 'tini')  # type: Sequence[str]
 
     def __init__(self, suite: str, tmp_dir: Path,
                  output: bool = False, reduce_size: bool = False) -> None:
@@ -550,12 +550,6 @@ class Bootstrap(object):
             for path in result:
                 logger.debug('copied %s', path)
 
-    def _postsetup_rootpid(self) -> None:
-        """Install root_pid.py into bootstrap image."""
-        src = Path('root_pid.py')
-        dst = self._target/'sbin'
-        copy(str(src), str(dst))
-
     def _postsetup_autoremove_kernels(self) -> None:
         """Allow apt to autoremove kernels."""
         # this file is one APT creates to make sure we don't "autoremove" our
@@ -572,7 +566,6 @@ class Bootstrap(object):
         logger = logging.getLogger(__name__)
         logger.info('Post Setup')
         self._exec_aptget(['remove', '--purge', '--auto-remove', 'systemd'])
-        self._postsetup_rootpid()
         self._postsetup_autoremove_kernels()
 
     def upgrade(self) -> None:
@@ -612,6 +605,10 @@ class Bootstrap(object):
         """Cleanup image in favor of size."""
         logger = logging.getLogger(__name__)
         logger.info('Cleanup bootstrap image')
+
+        # remove tini-static
+        cmd = ['rm', '-f', '/usr/bin/tini-static']
+        exec_chroot(self._target, cmd, output=self.output)
 
         cmd = ['/usr/local/bin/img_build.py', '--cleanup']
         if self.reduce_size is True:
