@@ -274,7 +274,7 @@ def build_image(archive: Path,
         ENV INITRD=no
         # fix locale
         ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-        ENTRYPOINT ["/usr/bin/tini"]
+        ENTRYPOINT ["/usr/bin/tini", "--"]
         CMD ["/bin/bash"]
         """.format(archive.name)
     stdout = subprocess.DEVNULL  # type: Optional[int]
@@ -590,7 +590,7 @@ class Bootstrap(object):
         except FileExistsError:
             pass
         sources = Path(apt_path/'sources.list')
-        src_sec_line = 'deb http://security.debian.org {}/updates main'.format(
+        src_sec_line = 'deb http://security.debian.org/debian-security stable-security main contrib non-free'.format(
             suite)
         with sources.open('a+t') as source_fh:
             for line in source_fh:
