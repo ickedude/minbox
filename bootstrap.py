@@ -508,6 +508,12 @@ class Bootstrap(object):
         dst = self._target/'usr'/'local'/'bin'
         copy(str(src), str(dst))
 
+    def _presetup_waitentry(self) -> None:
+        """Install wait_entry.py into bootstrap image."""
+        src = Path('wait_entry.py')
+        dst = self._target/'usr'/'local'/'bin'
+        copy(str(src), str(dst))
+
     def _setup_policyrcd(self, action: str) -> None:
         """Allow or forbid starting services by policy."""
         cmd = ['/usr/local/bin/img_build.py', '--policyrcd']
@@ -521,6 +527,7 @@ class Bootstrap(object):
 
         self._presetup_imgbuild()
         self._presetup_slowentry()
+        self._presetup_waitentry()
         self._setup_policyrcd('forbid')
         self._presetup_initctl()
         self._presetup_ichroot()
