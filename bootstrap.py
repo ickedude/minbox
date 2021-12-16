@@ -502,6 +502,12 @@ class Bootstrap(object):
         dst = self._target/'usr'/'local'/'bin'
         copy(str(src), str(dst))
 
+    def _presetup_slowentry(self) -> None:
+        """Install slow-entry.sh into bootstrap image."""
+        src = Path('slow-entry.sh')
+        dst = self._target/'usr'/'local'/'bin'
+        copy(str(src), str(dst))
+
     def _setup_policyrcd(self, action: str) -> None:
         """Allow or forbid starting services by policy."""
         cmd = ['/usr/local/bin/img_build.py', '--policyrcd']
@@ -514,6 +520,7 @@ class Bootstrap(object):
         logger.info('Pre Setup')
 
         self._presetup_imgbuild()
+        self._presetup_slowentry()
         self._setup_policyrcd('forbid')
         self._presetup_initctl()
         self._presetup_ichroot()
