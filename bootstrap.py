@@ -153,6 +153,11 @@ def parse_arguments() -> Namespace:
     parser.add_argument('--utc', action='store_false', dest='log_localtime',
                         help=('Output logging statements in UTC instead of '
                               'local time.'))
+    parser.add_argument('--no-check-gpg', dest='check_gpg',
+                        action='store_false',
+                        help=('Checking Release file signatures, disabling '
+                              'automatic fallback to HTTPS in case of a '
+                              'missing keyring.'))
     parsed_args = parser.parse_args()
 
     if parsed_args.log_level == 0:
@@ -330,12 +335,15 @@ class Bootstrap(object):
 
     def init(self,
              mirror: Optional[str] = None,
-             packages: Iterable[str] = ()) -> None:
+             packages: Iterable[str] = (),
+             check_gpg: bool = True) -> None:
         """Running debootstrap."""
         # TODO: add pre check if debootstrap is installed
         logger = logging.getLogger(__name__)
-        cmd = ['debootstrap', '--variant=minbase', '--force-check-gpg',
+        cmd = ['debootstrap', '--variant=minbase',
                '--merged-usr']  # type: List[str]
+        if check_gpg:
+            cmd.append('--force-check-gpg')
         include = list(self.default_packages)
         include.extend(packages)
         if include:
@@ -666,10 +674,11 @@ class Bootstrap(object):
     def create(self, dest: Path, resources: Iterable[Path] = (),
                packages: Iterable[Path] = (),
                mirror: Optional[str] = None,
-               security_update: bool = True) -> None:
+               security_update: bool = True,
+               check_gpg: bool = True) -> None:
         """Does the whole bootstrapping in one call."""
         with self as bs_img:
-            bs_img.init(mirror, packages)
+            bs_img.init(mirror, packages, check_gpg)
             bs_img.presetup()
             bs_img.copy_resources(resources)
             if security_update is True:
@@ -730,7 +739,7 @@ def main() -> None:
         rootfs = Bootstrap(args.suite or 'stable', args.tmpdir, output,
                            args.reduce_size)
         rootfs.create(args.archive, args.copy_dir, args.packages, args.mirror,
-                      args.security_update)
+                      args.security_update, args.check_gpg)
     build_image(bs_img, args.tmpdir, args.tags, output=output)
 
 
