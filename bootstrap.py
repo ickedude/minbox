@@ -274,7 +274,6 @@ def build_image(archive: Path,
         ENV INITRD=no
         # fix locale
         ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-        ENTRYPOINT ["/usr/bin/tini", "--"]
         CMD ["/bin/bash"]
         """.format(archive.name)
     stdout = subprocess.DEVNULL  # type: Optional[int]
@@ -310,7 +309,7 @@ class Bootstrap(object):
     """Create a bootstrap image, tune it for use with docker and archive it."""
     # TODO: prevent using without context manager, because of not setting self._target
 
-    default_packages = ('python3-minimal', 'tini')  # type: Sequence[str]
+    default_packages = ('python3-minimal', )  # type: Sequence[str]
 
     def __init__(self, suite: str, tmp_dir: Path,
                  output: bool = False, reduce_size: bool = False) -> None:
