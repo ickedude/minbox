@@ -116,8 +116,11 @@ def cleanup(verbose: bool = False) -> None:
 def _reduce_size_paths():
     # type: () -> Iterator[str]
     for path in iglob('/usr/share/doc/*/**/*', recursive=True):
-        if not fnmatch(path, '*/copyright'):
-            yield path
+        if fnmatch(path, '*/copyright'):
+            continue
+        elif path.startswith('/usr/share/doc/apt/examples'):
+            continue
+        yield path
     yield '/usr/share/groff'
     yield '/usr/share/info'
     yield '/usr/share/linda'
