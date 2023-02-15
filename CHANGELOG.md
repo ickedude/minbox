@@ -6,12 +6,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+
+## [1.0.0] - 2022-08-14
 ### Added
 - supporting debian stable and therefor python 3.5
+- added slow-entry.sh
+- added wait_entry.py
+- added option to not force gpg check
+
+### Changed
+- removed root_pid in favor of in debian included tini
+- added apt examples to removal list
 
 ### Fixed
 - --reduce-size is not following symlinks anymore
 - fixed syntax error in apt config file; honoring to not install recommended packages now
+- apt url for security is correctly pointing to stable now
 
 ## [0.4.0] - 2018-07-02
 ### Changed
